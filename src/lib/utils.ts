@@ -71,13 +71,13 @@ export function debugLog(message: string, ...args: any[]) {
 }
 
 export function log(str: string, ...rest: unknown[]) {
-  // Using stderr so that it doesn't interfere with stdout
-  console.error(`[${pid}] ${str}`, ...rest)
+  // // Using stderr so that it doesn't interfere with stdout
+  // console.error(`[${pid}] ${str}`, ...rest)
 
-  // If debug mode is on, also log to debug file
-  if (DEBUG && global.currentServerUrlHash) {
-    debugLog(str, ...rest)
-  }
+  // // If debug mode is on, also log to debug file
+  // if (DEBUG && global.currentServerUrlHash) {
+  //   debugLog(str, ...rest)
+  // }
 }
 
 /**

@@ -4,9 +4,9 @@
  * MCP Proxy with OAuth support
  * A bidirectional proxy between a local STDIO MCP server and a remote SSE server with OAuth authentication.
  *
- * Run with: npx tsx proxy.ts https://example.remote/server [callback-port]
- *
- * If callback-port is not specified, an available port will be automatically selected.
+ * Can be used programmatically or via CLI:
+ * CLI: npx tsx proxy.ts https://example.remote/server [callback-port]
+ * Programmatic: import { startProxy } from './proxy'
  */
 
 import { EventEmitter } from 'events'
@@ -15,8 +15,6 @@ import {
   connectToRemoteServer,
   log,
   mcpProxy,
-  parseCommandLineArgs,
-  setupSignalHandlers,
   getServerUrlHash,
   TransportStrategy,
 } from './lib/utils'
@@ -24,19 +22,33 @@ import { StaticOAuthClientInformationFull, StaticOAuthClientMetadata } from './l
 import { NodeOAuthClientProvider } from './lib/node-oauth-client-provider'
 import { createLazyAuthCoordinator } from './lib/coordination'
 
+export interface ProxyOptions {
+  serverUrl: string
+  callbackPort: number
+  headers?: Record<string, string>
+  transportStrategy?: TransportStrategy
+  host?: string
+  staticOAuthClientMetadata?: StaticOAuthClientMetadata
+  staticOAuthClientInfo?: StaticOAuthClientInformationFull
+  authorizeResource?: string
+  debug?: boolean
+}
+
 /**
- * Main function to run the proxy
+ * Start the MCP proxy programmatically
+ * @returns A cleanup function that should be called to properly shut down the proxy
  */
-async function runProxy(
-  serverUrl: string,
-  callbackPort: number,
-  headers: Record<string, string>,
-  transportStrategy: TransportStrategy = 'http-first',
-  host: string,
-  staticOAuthClientMetadata: StaticOAuthClientMetadata,
-  staticOAuthClientInfo: StaticOAuthClientInformationFull,
-  authorizeResource: string,
-) {
+export async function startProxy({
+  serverUrl,
+  callbackPort,
+  headers = {},
+  transportStrategy = 'http-first',
+  host = 'localhost',
+  staticOAuthClientMetadata = { redirect_uris: [] },
+  staticOAuthClientInfo = { redirect_uris: [], client_id: '' },
+  authorizeResource = '',
+  debug = false,
+}: ProxyOptions): Promise<() => Promise<void>> {
   // Set up event emitter for auth flow
   const events = new EventEmitter()
 
@@ -100,16 +112,14 @@ async function runProxy(
     log(`Proxy established successfully between local STDIO and remote ${remoteTransport.constructor.name}`)
     log('Press Ctrl+C to exit')
 
-    // Setup cleanup handler
-    const cleanup = async () => {
+    // Return cleanup function
+    return async () => {
       await remoteTransport.close()
       await localTransport.close()
-      // Only close the server if it was initialized
       if (server) {
         server.close()
       }
     }
-    setupSignalHandlers(cleanup)
   } catch (error) {
     log('Fatal error:', error)
     if (error instanceof Error && error.message.includes('self-signed certificate in certificate chain')) {
@@ -138,37 +148,6 @@ to the CA certificate file. If using claude_desktop_config.json, this might look
     if (server) {
       server.close()
     }
-    process.exit(1)
+    throw error // Re-throw the error for programmatic usage
   }
 }
-
-// Parse command-line arguments and run the proxy
-parseCommandLineArgs(process.argv.slice(2), 'Usage: npx tsx proxy.ts <https://server-url> [callback-port] [--debug]')
-  .then(
-    ({
-      serverUrl,
-      callbackPort,
-      headers,
-      transportStrategy,
-      host,
-      debug,
-      staticOAuthClientMetadata,
-      staticOAuthClientInfo,
-      authorizeResource,
-    }) => {
-      return runProxy(
-        serverUrl,
-        callbackPort,
-        headers,
-        transportStrategy,
-        host,
-        staticOAuthClientMetadata,
-        staticOAuthClientInfo,
-        authorizeResource,
-      )
-    },
-  )
-  .catch((error) => {
-    log('Fatal error:', error)
-    process.exit(1)
-  })
